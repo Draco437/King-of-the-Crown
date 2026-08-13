@@ -7,7 +7,7 @@ pygame.init()
 
 WIDTH, HEIGHT = 600, 650
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Crown Keep Away")
+pygame.display.set_caption("King of the Crown")
 clock = pygame.time.Clock()
 FPS = 60
 
@@ -279,7 +279,7 @@ def draw_welcome_screen(surface, font_title, font_sub, font_bold, start_bg=None)
         surface.fill((25, 30, 35))
 
     # Title & Decor
-    title = font_title.render("CROWN KEEP AWAY", True, COLOR_CROWN)
+    title = font_title.render("KING OF THE CROWN", True, COLOR_CROWN)
     surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
     
     draw_topdown_crown(surface, WIDTH // 2, 125, scale=1.8)
