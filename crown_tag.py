@@ -5,7 +5,7 @@ import pygame
 # --- INITIALIZATION & CONSTANTS ---
 pygame.init()
 
-WIDTH, HEIGHT = 600, 650
+WIDTH, HEIGHT = 600, 620
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("King of the Crown")
 clock = pygame.time.Clock()
@@ -19,7 +19,9 @@ COLOR_WATER = (91, 160, 226)
 COLOR_POOL_RIM = (230, 210, 190)
 COLOR_BRIDGE = (180, 180, 160)
 COLOR_DARK_GREEN = (34, 100, 34)
-COLOR_MUD = (139, 90, 43)
+COLOR_MUD = (110, 70, 35)
+COLOR_MUD_DARK = (75, 45, 20)
+COLOR_MUD_LIGHT = (135, 85, 45)
 COLOR_P1 = (0, 150, 255)       # Blue player shirt
 COLOR_P2 = (230, 60, 60)        # Red player shirt
 COLOR_SKIN = (240, 195, 150)
@@ -40,6 +42,39 @@ MUD_SPEED = 2.1
 # Game States
 STATE_MENU = "MENU"
 STATE_PLAYING = "PLAYING"
+
+# --- ORGANIC CURVED MUD PUDDLES (SMOOTH CIRCULAR BLOBS) ---
+
+def get_mud_patches():
+    """ Defines mud puddles made of overlapping smooth circular blobs with updated positions """
+    puddles = [
+        # Puddle 1: Shifted slightly left and down (Clear of Player 1's initial spawn)
+        {
+            "cx": 180, "cy": 370, "r": 38,
+            "blobs": [
+                (180, 370, 34), (165, 365, 24), (195, 375, 24), 
+                (180, 355, 22), (175, 382, 22)
+            ]
+        },
+        # Puddle 2: Shifted down into the open right-center area
+        {
+            "cx": 470, "cy": 220, "r": 42,
+            "blobs": [
+                (470, 220, 38), (450, 215, 26), (490, 225, 28), 
+                (475, 205, 24), (465, 238, 24)
+            ]
+        },
+        # Puddle 3: Centered in the lower middle area (Between yard and pool)
+        {
+            "cx": 300, "cy": 540, "r": 36,
+            "blobs": [
+                (300, 540, 32), (285, 535, 22), (315, 545, 24), 
+                (300, 525, 20), (295, 552, 20)
+            ]
+        }
+    ]
+    return puddles
+
 
 # --- CLASSES ---
 
@@ -85,7 +120,7 @@ class Player:
         self.angle = 0
 
     def handle_input(self, keys, obstacles, mud_patches):
-        in_mud = any(math.hypot(self.x - mx, self.y - my) < (self.radius + mr) for mx, my, mr in mud_patches)
+        in_mud = any(math.hypot(self.x - p["cx"], self.y - p["cy"]) < (self.radius + p["r"]) for p in mud_patches)
         self.speed = MUD_SPEED if in_mud else NORMAL_SPEED
 
         dx, dy = 0, 0
@@ -179,9 +214,6 @@ class Crown:
 
 # --- ENVIRONMENT & MAP ---
 
-def get_mud_patches():
-    return [(210, 350, 24), (480, 80, 28), (350, 500, 20)]
-
 def get_static_obstacles():
     return [
         pygame.Rect(0, 80, 180, 140),
@@ -193,14 +225,26 @@ def get_static_obstacles():
 def draw_map(surface, mud_patches):
     surface.fill(COLOR_BG)
 
-    for mx, my, mr in mud_patches:
-        pygame.draw.circle(surface, COLOR_MUD, (mx, my), mr)
-        pygame.draw.circle(surface, (90, 50, 20), (mx, my), mr, 2)
+    # Render Smooth Curved Mud Puddles (Zero sharp edges)
+    for p in mud_patches:
+        # Dark outer border/rim layer
+        for bx, by, br in p["blobs"]:
+            pygame.draw.circle(surface, COLOR_MUD_DARK, (bx, by), br + 3)
 
+        # Main mud body
+        for bx, by, br in p["blobs"]:
+            pygame.draw.circle(surface, COLOR_MUD, (bx, by), br)
+
+        # Wet inner shine/reflection layer
+        for bx, by, br in p["blobs"]:
+            pygame.draw.circle(surface, COLOR_MUD_LIGHT, (bx - 2, by - 2), int(br * 0.65))
+
+    # House
     pygame.draw.rect(surface, COLOR_WALL, (0, 90, 170, 180))
     pygame.draw.polygon(surface, COLOR_ROOF, [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)])
     pygame.draw.polygon(surface, (0, 0, 0), [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)], 3)
 
+    # Pool & Vertical Stepping Stone Bridge
     pygame.draw.rect(surface, COLOR_POOL_RIM, (410, 370, 170, 160), border_radius=8)
     pygame.draw.rect(surface, COLOR_WATER, (425, 385, 140, 130), border_radius=4)
     pygame.draw.rect(surface, (0, 0, 0), (410, 370, 170, 160), width=3, border_radius=8)
@@ -210,9 +254,11 @@ def draw_map(surface, mud_patches):
         pygame.draw.rect(surface, COLOR_BRIDGE, (bridge_x, 395 + (i * 38), 40, 28), border_radius=4)
         pygame.draw.rect(surface, (40, 40, 40), (bridge_x, 395 + (i * 38), 40, 28), width=2, border_radius=4)
 
+    # Open Lawnmower Box Yard
     pygame.draw.rect(surface, COLOR_BG, (30, 390, 180, 180))
     pygame.draw.rect(surface, COLOR_DARK_GREEN, (30, 390, 180, 180), width=6)
 
+    # Trees & Map Borders
     trees = [(230, 130), (420, 140), (500, 220), (280, 580)]
     for tx, ty in trees:
         pygame.draw.circle(surface, (45, 130, 45), (tx, ty), 18)
@@ -262,7 +308,7 @@ def draw_button(surface, rect, text, font, mouse_pos):
     pygame.draw.rect(surface, COLOR_CROWN if hovered else (180, 180, 180), rect, width=2, border_radius=10)
     
     txt_surf = font.render(text, True, COLOR_WHITE)
-    surface.blit(txt_surf, (rect.cx - txt_surf.get_width() // 2, rect.cy - txt_surf.get_height() // 2))
+    surface.blit(txt_surf, (rect.centerx - txt_surf.get_width() // 2, rect.centery - txt_surf.get_height() // 2))
     return hovered
 
 
@@ -271,25 +317,21 @@ def draw_button(surface, rect, text, font, mouse_pos):
 def draw_welcome_screen(surface, font_title, font_sub, font_bold, start_bg=None):
     if start_bg:
         surface.blit(start_bg, (0, 0))
-        # Dark translucent overlay to keep text easily readable over any image
         tint = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
         tint.fill((0, 0, 0, 130))
         surface.blit(tint, (0, 0))
     else:
         surface.fill((25, 30, 35))
 
-    # Title & Decor
     title = font_title.render("KING OF THE CROWN", True, COLOR_CROWN)
     surface.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
     
     draw_topdown_crown(surface, WIDTH // 2, 125, scale=1.8)
 
-    # Controls Info Box
     box_rect = pygame.Rect(50, 180, WIDTH - 100, 350)
     pygame.draw.rect(surface, (25, 30, 38, 220), box_rect, border_radius=12)
     pygame.draw.rect(surface, COLOR_CROWN, box_rect, width=2, border_radius=12)
 
-    # Instructions
     p1_head = font_bold.render("PLAYER 1 (BLUE)", True, COLOR_P1)
     p1_ctrl = font_sub.render("Controls:  W, A, S, D", True, COLOR_WHITE)
     
@@ -314,7 +356,6 @@ def draw_welcome_screen(surface, font_title, font_sub, font_bold, start_bg=None)
     surface.blit(rule_3, (75, 415))
     surface.blit(pause_info, (75, 450))
 
-    # Start Prompt
     start_txt = font_bold.render("PRESS SPACE TO START", True, COLOR_CROWN)
     surface.blit(start_txt, (WIDTH // 2 - start_txt.get_width() // 2, 560))
 
@@ -327,7 +368,6 @@ def main():
     font_bold = pygame.font.SysFont("Trebuchet MS", 20, bold=True)
     font_title = pygame.font.SysFont("Trebuchet MS", 36, bold=True)
 
-    # Try loading custom start menu background image
     start_bg = None
     for bg_filename in ["background.jpg", "background.png"]:
         try:
@@ -340,7 +380,6 @@ def main():
     game_state = STATE_MENU
     is_paused = False
 
-    # Player and Objects Initialization
     p1_controls = {'up': pygame.K_w, 'down': pygame.K_s, 'left': pygame.K_a, 'right': pygame.K_d}
     p2_controls = {'up': pygame.K_UP, 'down': pygame.K_DOWN, 'left': pygame.K_LEFT, 'right': pygame.K_RIGHT}
 
@@ -370,19 +409,16 @@ def main():
                 sys.exit()
 
             if event.type == pygame.KEYDOWN:
-                # Start game from Welcome Screen
                 if game_state == STATE_MENU and event.key == pygame.K_SPACE:
                     game_state = STATE_PLAYING
 
-                # Pause Toggle
+                # Fixed Pause Trigger on 'P'
                 elif game_state == STATE_PLAYING and event.key == pygame.K_p and not game_over:
                     is_paused = not is_paused
 
-                # Restart shortcut on game over
                 elif game_over and event.key == pygame.K_r:
                     main()
 
-            # Mouse Clicks in Pause Menu
             if event.type == pygame.MOUSEBUTTONDOWN and is_paused:
                 if btn_resume.collidepoint(mouse_pos):
                     is_paused = False
@@ -409,7 +445,6 @@ def main():
                 p2.handle_input(keys, current_obstacles, mud_patches)
                 resolve_player_collision(p1, p2)
 
-                # Crown pickup & stealing
                 if not crown.is_picked_up:
                     p1_dist = math.hypot(p1.x - crown.x, p1.y - crown.y)
                     p2_dist = math.hypot(p2.x - crown.x, p2.y - crown.y)
@@ -435,7 +470,6 @@ def main():
                         
                         steal_cooldown = STEAL_COOLDOWN_TIME
 
-                # Victory timers
                 if p1.has_crown:
                     p1.hold_time += dt
                     if p1.hold_time >= WIN_TIME:
@@ -450,7 +484,7 @@ def main():
                         game_over = True
                         winner_text = "PLAYER 2 WINS!"
 
-            # Render Game World
+            # Render World
             draw_map(screen, mud_patches)
             lawnmower.draw(screen)
             crown.draw(screen)
@@ -458,7 +492,7 @@ def main():
             p2.draw(screen)
             draw_hud(screen, font_hud, p1, p2)
 
-            # Pause Overlay Pop-up
+            # Pause Overlay Pop-up Screen
             if is_paused:
                 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 160))
@@ -475,7 +509,6 @@ def main():
                 draw_button(screen, btn_restart, "Restart", font_bold, mouse_pos)
                 draw_button(screen, btn_home, "Home Page", font_bold, mouse_pos)
 
-            # Game Over Overlay
             elif game_over:
                 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 180))
