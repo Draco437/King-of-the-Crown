@@ -1,6 +1,8 @@
 import sys
 import math
 import pygame
+import os
+import random
 
 # --- INITIALIZATION & CONSTANTS ---
 pygame.init()
@@ -33,22 +35,37 @@ COLOR_WHITE = (255, 255, 255)
 COLOR_BTN_NORMAL = (40, 40, 50)
 COLOR_BTN_HOVER = (70, 70, 90)
 
+# Boost Colors
+COLOR_BOOST_BLUE = (0, 180, 255)
+COLOR_BOOST_GLOW = (0, 180, 255, 60)
+COLOR_BOOST_THUNDER = (255, 240, 0)
+
 # Game Rules
-WIN_TIME = 20.0
+WIN_TIME = 15.0
 STEAL_COOLDOWN_TIME = 0.8
 NORMAL_SPEED = 4.2
 MUD_SPEED = 2.1
+BOOST_DURATION = 4.0
+BOOST_MULTIPLIER = 1.5
 
 # Game States
 STATE_MENU = "MENU"
 STATE_PLAYING = "PLAYING"
 
-# --- ORGANIC CURVED MUD PUDDLES (SMOOTH CIRCULAR BLOBS) ---
+# --- AUDIO LOAD ---
+try:
+    sound_path = os.path.join("sounds", "bg_music.mp3")
+    if os.path.exists(sound_path):
+        pygame.mixer.music.load(sound_path)
+        pygame.mixer.music.set_volume(0.35)
+        pygame.mixer.music.play(-1)
+except Exception as e:
+    print("Could not load background music:", e)
+
+# --- ORGANIC CURVED MUD PUDDLES ---
 
 def get_mud_patches():
-    """ Defines mud puddles made of overlapping smooth circular blobs with updated positions """
     puddles = [
-        # Puddle 1: Shifted slightly left and down (Clear of Player 1's initial spawn)
         {
             "cx": 180, "cy": 370, "r": 38,
             "blobs": [
@@ -56,7 +73,6 @@ def get_mud_patches():
                 (180, 355, 22), (175, 382, 22)
             ]
         },
-        # Puddle 2: Shifted down into the open right-center area
         {
             "cx": 470, "cy": 220, "r": 42,
             "blobs": [
@@ -64,7 +80,6 @@ def get_mud_patches():
                 (475, 205, 24), (465, 238, 24)
             ]
         },
-        # Puddle 3: Centered in the lower middle area (Between yard and pool)
         {
             "cx": 300, "cy": 540, "r": 36,
             "blobs": [
@@ -106,8 +121,84 @@ class Lawnmower:
         pygame.draw.rect(surface, (40, 40, 40), (handle_x, self.y + 10, 10, 20))
 
 
+class SpeedBoost:
+    def __init__(self, mud_patches):
+        self.radius = 14
+        self.active = False
+        self.x = 0
+        self.y = 0
+        self.respawn_timer = random.uniform(2.0, 5.0)  # Initial delay
+        self.mud_patches = mud_patches
+
+    def is_valid_position(self, px, py):
+        # Margin from boundaries
+        if px < 35 or px > WIDTH - 35 or py < 45 or py > HEIGHT - 45:
+            return False
+
+        # Avoid House / Roof
+        house_rect = pygame.Rect(0, 70, 200, 220)
+        if house_rect.collidepoint(px, py):
+            return False
+
+        # Avoid Pool & Bridge Region
+        pool_rect = pygame.Rect(400, 360, 190, 180)
+        if pool_rect.collidepoint(px, py):
+            return False
+
+        # Avoid Mud patches
+        for p in self.mud_patches:
+            if math.hypot(px - p["cx"], py - p["cy"]) < (self.radius + p["r"] + 10):
+                return False
+
+        return True
+
+    def spawn(self):
+        for _ in range(100):  # Try finding a valid spawn point
+            tx = random.randint(40, WIDTH - 40)
+            ty = random.randint(50, HEIGHT - 50)
+            if self.is_valid_position(tx, ty):
+                self.x = tx
+                self.y = ty
+                self.active = True
+                break
+
+    def update(self, dt):
+        if not self.active:
+            self.respawn_timer -= dt
+            if self.respawn_timer <= 0:
+                self.spawn()
+
+    def draw(self, surface):
+        if not self.active:
+            return
+
+        # Pulsing Glow Effect
+        glow_surf = pygame.Surface((self.radius * 4, self.radius * 4), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, COLOR_BOOST_GLOW, (self.radius * 2, self.radius * 2), self.radius * 2)
+        surface.blit(glow_surf, (self.x - self.radius * 2, self.y - self.radius * 2))
+
+        # Main Blue Circle
+        pygame.draw.circle(surface, COLOR_BOOST_BLUE, (int(self.x), int(self.y)), self.radius)
+        pygame.draw.circle(surface, COLOR_WHITE, (int(self.x), int(self.y)), self.radius, width=2)
+
+        # Thunder Bolt Icon
+        thunder_pts = [
+            (self.x + 2, self.y - 8),
+            (self.x - 5, self.y + 1),
+            (self.x + 1, self.y + 1),
+            (self.x - 2, self.y + 8),
+            (self.x + 5, self.y - 1),
+            (self.x - 1, self.y - 1)
+        ]
+        pygame.draw.polygon(surface, COLOR_BOOST_THUNDER, thunder_pts)
+
+    def trigger_pickup(self):
+        self.active = False
+        self.respawn_timer = random.uniform(5.0, 10.0)  # Timer before next boost spawns
+
+
 class Player:
-    def __init__(self, x, y, color, hair_color, controls):
+    def __init__(self, x, y, color, hair_color, controls, initial_angle=0):
         self.x = x
         self.y = y
         self.radius = 16
@@ -117,11 +208,16 @@ class Player:
         self.controls = controls
         self.has_crown = False
         self.hold_time = 0.0
-        self.angle = 0
+        self.angle = initial_angle
+        self.boost_timer = 0.0
 
-    def handle_input(self, keys, obstacles, mud_patches):
+    def handle_input(self, keys, obstacles, mud_patches, boost, dt):
+        if self.boost_timer > 0:
+            self.boost_timer -= dt
+
         in_mud = any(math.hypot(self.x - p["cx"], self.y - p["cy"]) < (self.radius + p["r"]) for p in mud_patches)
-        self.speed = MUD_SPEED if in_mud else NORMAL_SPEED
+        base_spd = MUD_SPEED if in_mud else NORMAL_SPEED
+        self.speed = base_spd * (BOOST_MULTIPLIER if self.boost_timer > 0 else 1.0)
 
         dx, dy = 0, 0
         if keys[self.controls['up']]:    dy -= 1
@@ -135,13 +231,22 @@ class Player:
                 dx *= 0.7071
                 dy *= 0.7071
 
-        new_x = max(self.radius, min(WIDTH - self.radius, self.x + dx * self.speed))
-        new_y = max(self.radius, min(HEIGHT - self.radius, self.y + dy * self.speed))
+        target_x = max(self.radius, min(WIDTH - self.radius, self.x + dx * self.speed))
+        target_y = max(self.radius, min(HEIGHT - self.radius, self.y + dy * self.speed))
 
-        if not self.check_obstacle_collision(new_x, self.y, obstacles):
-            self.x = new_x
-        if not self.check_obstacle_collision(self.x, new_y, obstacles):
-            self.y = new_y
+        if not self.check_obstacle_collision(target_x, target_y, obstacles):
+            self.x = target_x
+            self.y = target_y
+        else:
+            if not self.check_obstacle_collision(target_x, self.y, obstacles):
+                self.x = target_x
+            if not self.check_obstacle_collision(self.x, target_y, obstacles):
+                self.y = target_y
+
+        # Check Boost Collision
+        if boost.active and math.hypot(self.x - boost.x, self.y - boost.y) < (self.radius + boost.radius):
+            self.boost_timer = BOOST_DURATION
+            boost.trigger_pickup()
 
     def check_obstacle_collision(self, next_x, next_y, obstacles):
         player_rect = pygame.Rect(next_x - self.radius, next_y - self.radius, 
@@ -171,6 +276,12 @@ class Player:
         rotated_surf = pygame.transform.rotate(char_surf, self.angle)
         new_rect = rotated_surf.get_rect(center=(int(self.x), int(self.y)))
         surface.blit(rotated_surf, new_rect.topleft)
+
+        # Active Boost Trail/Aura Effect
+        if self.boost_timer > 0:
+            boost_aura = pygame.Surface((self.radius * 3, self.radius * 3), pygame.SRCALPHA)
+            pygame.draw.circle(boost_aura, (0, 180, 255, 80), (int(self.radius * 1.5), int(self.radius * 1.5)), int(self.radius * 1.4))
+            surface.blit(boost_aura, (self.x - self.radius * 1.5, self.y - self.radius * 1.5))
 
         if self.has_crown:
             glow_surf = pygame.Surface((self.radius * 4, self.radius * 4), pygame.SRCALPHA)
@@ -218,24 +329,20 @@ def get_static_obstacles():
     return [
         pygame.Rect(0, 80, 180, 140),
         pygame.Rect(0, 220, 80, 60),
-        pygame.Rect(410, 370, 60, 160),
-        pygame.Rect(520, 370, 60, 160)
+        pygame.Rect(410, 370, 65, 160),
+        pygame.Rect(515, 370, 65, 160)
     ]
 
 def draw_map(surface, mud_patches):
     surface.fill(COLOR_BG)
 
-    # Render Smooth Curved Mud Puddles (Zero sharp edges)
     for p in mud_patches:
-        # Dark outer border/rim layer
         for bx, by, br in p["blobs"]:
             pygame.draw.circle(surface, COLOR_MUD_DARK, (bx, by), br + 3)
 
-        # Main mud body
         for bx, by, br in p["blobs"]:
             pygame.draw.circle(surface, COLOR_MUD, (bx, by), br)
 
-        # Wet inner shine/reflection layer
         for bx, by, br in p["blobs"]:
             pygame.draw.circle(surface, COLOR_MUD_LIGHT, (bx - 2, by - 2), int(br * 0.65))
 
@@ -244,7 +351,7 @@ def draw_map(surface, mud_patches):
     pygame.draw.polygon(surface, COLOR_ROOF, [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)])
     pygame.draw.polygon(surface, (0, 0, 0), [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)], 3)
 
-    # Pool & Vertical Stepping Stone Bridge
+    # Pool & Bridge
     pygame.draw.rect(surface, COLOR_POOL_RIM, (410, 370, 170, 160), border_radius=8)
     pygame.draw.rect(surface, COLOR_WATER, (425, 385, 140, 130), border_radius=4)
     pygame.draw.rect(surface, (0, 0, 0), (410, 370, 170, 160), width=3, border_radius=8)
@@ -254,11 +361,11 @@ def draw_map(surface, mud_patches):
         pygame.draw.rect(surface, COLOR_BRIDGE, (bridge_x, 395 + (i * 38), 40, 28), border_radius=4)
         pygame.draw.rect(surface, (40, 40, 40), (bridge_x, 395 + (i * 38), 40, 28), width=2, border_radius=4)
 
-    # Open Lawnmower Box Yard
+    # Lawnmower Yard
     pygame.draw.rect(surface, COLOR_BG, (30, 390, 180, 180))
     pygame.draw.rect(surface, COLOR_DARK_GREEN, (30, 390, 180, 180), width=6)
 
-    # Trees & Map Borders
+    # Trees
     trees = [(230, 130), (420, 140), (500, 220), (280, 580)]
     for tx, ty in trees:
         pygame.draw.circle(surface, (45, 130, 45), (tx, ty), 18)
@@ -299,8 +406,6 @@ def resolve_player_collision(p1, p2):
         p2.y += ny * (overlap / 2)
 
 
-# --- UI HELPERS ---
-
 def draw_button(surface, rect, text, font, mouse_pos):
     hovered = rect.collidepoint(mouse_pos)
     color = COLOR_BTN_HOVER if hovered else COLOR_BTN_NORMAL
@@ -311,8 +416,6 @@ def draw_button(surface, rect, text, font, mouse_pos):
     surface.blit(txt_surf, (rect.centerx - txt_surf.get_width() // 2, rect.centery - txt_surf.get_height() // 2))
     return hovered
 
-
-# --- UI SCREENS ---
 
 def draw_welcome_screen(surface, font_title, font_sub, font_bold, start_bg=None):
     if start_bg:
@@ -339,9 +442,9 @@ def draw_welcome_screen(surface, font_title, font_sub, font_bold, start_bg=None)
     p2_ctrl = font_sub.render("Controls:  ARROW KEYS", True, COLOR_WHITE)
 
     rules_head = font_bold.render("HOW TO PLAY", True, COLOR_CROWN)
-    rule_1 = font_sub.render("• Grab the crown & hold it for 20 seconds!", True, COLOR_WHITE)
+    rule_1 = font_sub.render("• Grab the crown & hold it for 15 seconds!", True, COLOR_WHITE)
     rule_2 = font_sub.render("• Bump into the crown holder to steal it.", True, COLOR_WHITE)
-    rule_3 = font_sub.render("• Mud slows you down | Cross pool via bridge.", True, COLOR_WHITE)
+    rule_3 = font_sub.render("• Grab blue thunder boost for extra speed!", True, COLOR_WHITE)
     pause_info = font_sub.render("• Press 'P' at any time to Pause the game.", True, (200, 200, 200))
 
     surface.blit(p1_head, (75, 200))
@@ -383,17 +486,18 @@ def main():
     p1_controls = {'up': pygame.K_w, 'down': pygame.K_s, 'left': pygame.K_a, 'right': pygame.K_d}
     p2_controls = {'up': pygame.K_UP, 'down': pygame.K_DOWN, 'left': pygame.K_LEFT, 'right': pygame.K_RIGHT}
 
-    p1 = Player(200, 320, COLOR_P1, COLOR_HAIR_1, p1_controls)
-    p2 = Player(400, 320, COLOR_P2, COLOR_HAIR_2, p2_controls)
+    p1 = Player(200, 320, COLOR_P1, COLOR_HAIR_1, p1_controls, initial_angle=0)
+    p2 = Player(400, 320, COLOR_P2, COLOR_HAIR_2, p2_controls, initial_angle=180)
     crown = Crown(WIDTH // 2, HEIGHT // 2)
     lawnmower = Lawnmower(x_min=45, x_max=165, y=460)
 
     mud_patches = get_mud_patches()
+    boost = SpeedBoost(mud_patches)
+
     game_over = False
     winner_text = ""
     steal_cooldown = 0.0
 
-    # Pause Menu Buttons
     btn_w, btn_h = 180, 45
     btn_resume = pygame.Rect(WIDTH // 2 - btn_w // 2, 230, btn_w, btn_h)
     btn_restart = pygame.Rect(WIDTH // 2 - btn_w // 2, 290, btn_w, btn_h)
@@ -412,7 +516,6 @@ def main():
                 if game_state == STATE_MENU and event.key == pygame.K_SPACE:
                     game_state = STATE_PLAYING
 
-                # Fixed Pause Trigger on 'P'
                 elif game_state == STATE_PLAYING and event.key == pygame.K_p and not game_over:
                     is_paused = not is_paused
 
@@ -437,12 +540,14 @@ def main():
                 if steal_cooldown > 0:
                     steal_cooldown -= dt
 
+                boost.update(dt)
+
                 keys = pygame.key.get_pressed()
                 lawnmower.update()
                 current_obstacles = get_static_obstacles() + [lawnmower.get_rect()]
 
-                p1.handle_input(keys, current_obstacles, mud_patches)
-                p2.handle_input(keys, current_obstacles, mud_patches)
+                p1.handle_input(keys, current_obstacles, mud_patches, boost, dt)
+                p2.handle_input(keys, current_obstacles, mud_patches, boost, dt)
                 resolve_player_collision(p1, p2)
 
                 if not crown.is_picked_up:
@@ -487,12 +592,13 @@ def main():
             # Render World
             draw_map(screen, mud_patches)
             lawnmower.draw(screen)
+            boost.draw(screen)
             crown.draw(screen)
             p1.draw(screen)
             p2.draw(screen)
             draw_hud(screen, font_hud, p1, p2)
 
-            # Pause Overlay Pop-up Screen
+            # Pause Overlay
             if is_paused:
                 overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 160))
