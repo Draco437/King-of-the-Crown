@@ -7,7 +7,7 @@ import random
 # --- INITIALIZATION & CONSTANTS ---
 pygame.init()
 
-WIDTH, HEIGHT = 600, 620
+WIDTH, HEIGHT = 630, 620
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("King of the Crown")
 clock = pygame.time.Clock()
@@ -15,6 +15,8 @@ FPS = 60
 
 # Colors
 COLOR_BG = (118, 198, 88)
+COLOR_GRASS_DARK = (88, 168, 62)
+COLOR_GRASS_LIGHT = (148, 222, 112)
 COLOR_ROOF = (195, 88, 60)
 COLOR_ROOF_DARK = (145, 55, 35)
 COLOR_ROOF_LIGHT = (225, 115, 85)
@@ -23,7 +25,6 @@ COLOR_WALL = (244, 219, 161)
 COLOR_WATER = (91, 160, 226)
 COLOR_POOL_RIM = (230, 210, 190)
 COLOR_BRIDGE = (180, 180, 160)
-COLOR_DARK_GREEN = (34, 100, 34)
 COLOR_MUD = (110, 70, 35)
 COLOR_MUD_DARK = (75, 45, 20)
 COLOR_MUD_LIGHT = (135, 85, 45)
@@ -44,10 +45,10 @@ COLOR_BOOST_GLOW = (0, 180, 255, 60)
 COLOR_BOOST_THUNDER = (255, 240, 0)
 
 # Game Rules
-WIN_TIME = 15.0
+WIN_TIME = 20.0
 STEAL_COOLDOWN_TIME = 0.8
 NORMAL_SPEED = 4.2
-MUD_SPEED = 2.1
+MUD_SPEED = 1.9
 BOOST_DURATION = 4.0
 BOOST_MULTIPLIER = 1.5
 
@@ -65,10 +66,21 @@ try:
 except Exception as e:
     print("Could not load background music:", e)
 
-# --- ORGANIC CURVED MUD PUDDLES ---
+# --- MAP ENVIRONMENT DATA ---
+
+def get_grass_tufts(width, height, count=160, seed=101):
+    random.seed(seed)
+    tufts = []
+    for _ in range(count):
+        gx = random.randint(25, width - 25)
+        gy = random.randint(25, height - 25)
+        tufts.append((gx, gy))
+    return tufts
+
+GRASS_TUFTS = get_grass_tufts(WIDTH, HEIGHT)
 
 def get_mud_patches():
-    puddles = [
+    return [
         {
             "cx": 180, "cy": 370, "r": 38,
             "blobs": [
@@ -89,10 +101,23 @@ def get_mud_patches():
                 (300, 540, 32), (285, 535, 22), (315, 545, 24), 
                 (300, 525, 20), (295, 552, 20)
             ]
+        },
+        {
+            "cx": 300, "cy": 170, "r": 36,
+            "blobs": [
+                (300, 540, 32), (285, 535, 22), (315, 545, 24), 
+                (300, 525, 20), (295, 552, 20)
+            ]
         }
     ]
-    return puddles
 
+def get_static_obstacles():
+    return [
+        pygame.Rect(0, 80, 180, 140),
+        pygame.Rect(0, 220, 80, 60),
+        pygame.Rect(410, 370, 65, 160),
+        pygame.Rect(515, 370, 65, 160)
+    ]
 
 # --- CLASSES ---
 
@@ -117,11 +142,32 @@ class Lawnmower:
 
     def draw(self, surface):
         mower_rect = self.get_rect()
-        pygame.draw.rect(surface, (200, 60, 40), mower_rect, border_radius=4)
-        pygame.draw.rect(surface, (20, 20, 20), mower_rect, width=2, border_radius=4)
         
-        handle_x = self.x + (5 if self.direction == 1 else self.width - 15)
-        pygame.draw.rect(surface, (40, 40, 40), (handle_x, self.y + 10, 10, 20))
+        # Main Body
+        pygame.draw.rect(surface, (210, 40, 40), mower_rect, border_radius=6)
+        pygame.draw.rect(surface, (120, 20, 20), mower_rect, width=2, border_radius=6)
+        
+        # Engine Deck Cover
+        engine_rect = pygame.Rect(mower_rect.x + 4, mower_rect.y + 10, mower_rect.width - 8, mower_rect.height - 20)
+        pygame.draw.rect(surface, (40, 40, 40), engine_rect, border_radius=3)
+        pygame.draw.circle(surface, (80, 80, 80), engine_rect.center, 5)
+        
+        # Wheels
+        wheel_w, wheel_h = 4, 10
+        pygame.draw.rect(surface, (10, 10, 10), (mower_rect.x - 2, mower_rect.y + 4, wheel_w, wheel_h), border_radius=2)
+        pygame.draw.rect(surface, (10, 10, 10), (mower_rect.right - 2, mower_rect.y + 4, wheel_w, wheel_h), border_radius=2)
+        pygame.draw.rect(surface, (10, 10, 10), (mower_rect.x - 2, mower_rect.bottom - 14, wheel_w, wheel_h), border_radius=2)
+        pygame.draw.rect(surface, (10, 10, 10), (mower_rect.right - 2, mower_rect.bottom - 14, wheel_w, wheel_h), border_radius=2)
+
+        # Handlebar Bar and Grip
+        if self.direction == 1:
+            pygame.draw.line(surface, (60, 60, 60), (mower_rect.x, mower_rect.y + 10), (mower_rect.x - 10, mower_rect.y + 10), 3)
+            pygame.draw.line(surface, (60, 60, 60), (mower_rect.x, mower_rect.bottom - 10), (mower_rect.x - 10, mower_rect.bottom - 10), 3)
+            pygame.draw.line(surface, (20, 20, 20), (mower_rect.x - 10, mower_rect.y + 8), (mower_rect.x - 10, mower_rect.bottom - 8), 4)
+        else:
+            pygame.draw.line(surface, (60, 60, 60), (mower_rect.right, mower_rect.y + 10), (mower_rect.right + 10, mower_rect.y + 10), 3)
+            pygame.draw.line(surface, (60, 60, 60), (mower_rect.right, mower_rect.bottom - 10), (mower_rect.right + 10, mower_rect.bottom - 10), 3)
+            pygame.draw.line(surface, (20, 20, 20), (mower_rect.right + 10, mower_rect.y + 8), (mower_rect.right + 10, mower_rect.bottom - 8), 4)
 
 
 class SpeedBoost:
@@ -130,7 +176,7 @@ class SpeedBoost:
         self.active = False
         self.x = 0
         self.y = 0
-        self.respawn_timer = random.uniform(2.0, 5.0)  # Initial delay
+        self.respawn_timer = random.uniform(2.0, 5.0)
         self.mud_patches = mud_patches
 
     def is_valid_position(self, px, py):
@@ -195,16 +241,22 @@ class SpeedBoost:
 
 class Player:
     def __init__(self, x, y, color, hair_color, controls, initial_angle=0):
-        self.x = x
-        self.y = y
-        self.radius = 16
+        self.start_x = x
+        self.start_y = y
+        self.initial_angle = initial_angle
         self.shirt_color = color
         self.hair_color = hair_color
-        self.speed = NORMAL_SPEED
         self.controls = controls
+        self.radius = 16
+        self.reset()
+
+    def reset(self):
+        self.x = self.start_x
+        self.y = self.start_y
+        self.speed = NORMAL_SPEED
         self.has_crown = False
         self.hold_time = 0.0
-        self.angle = initial_angle
+        self.angle = self.initial_angle
         self.boost_timer = 0.0
 
     def handle_input(self, keys, obstacles, mud_patches, boost, dt):
@@ -227,8 +279,13 @@ class Player:
                 dx *= 0.7071
                 dy *= 0.7071
 
-        target_x = max(self.radius, min(WIDTH - self.radius, self.x + dx * self.speed))
-        target_y = max(self.radius, min(HEIGHT - self.radius, self.y + dy * self.speed))
+        min_bounds_x = 20 + self.radius
+        max_bounds_x = WIDTH - 20 - self.radius
+        min_bounds_y = 20 + self.radius
+        max_bounds_y = HEIGHT - 20 - self.radius
+
+        target_x = max(min_bounds_x, min(max_bounds_x, self.x + dx * self.speed))
+        target_y = max(min_bounds_y, min(max_bounds_y, self.y + dy * self.speed))
 
         if not self.check_obstacle_collision(target_x, target_y, obstacles):
             self.x = target_x
@@ -307,9 +364,14 @@ def draw_topdown_crown(surface, cx, cy, scale=1.0):
 
 class Crown:
     def __init__(self, x, y):
-        self.x = x
-        self.y = y
+        self.start_x = x
+        self.start_y = y
         self.radius = 16
+        self.reset()
+
+    def reset(self):
+        self.x = self.start_x
+        self.y = self.start_y
         self.is_picked_up = False
 
     def draw(self, surface):
@@ -317,15 +379,14 @@ class Crown:
             draw_topdown_crown(surface, int(self.x), int(self.y), scale=1.1)
 
 
-# --- ENVIRONMENT & MAP ---
+# --- DRAWING FUNCTIONS ---
 
-def get_static_obstacles():
-    return [
-        pygame.Rect(0, 80, 180, 140),
-        pygame.Rect(0, 220, 80, 60),
-        pygame.Rect(410, 370, 65, 160),
-        pygame.Rect(515, 370, 65, 160)
-    ]
+def draw_grass_tufts(surface):
+    for gx, gy in GRASS_TUFTS:
+        pygame.draw.line(surface, COLOR_GRASS_DARK, (gx, gy), (gx - 3, gy - 6), 2)
+        pygame.draw.line(surface, COLOR_GRASS_LIGHT, (gx, gy), (gx, gy - 7), 2)
+        pygame.draw.line(surface, COLOR_GRASS_DARK, (gx, gy), (gx + 3, gy - 6), 2)
+
 
 def draw_tree(surface, cx, cy, r=24):
     shadow_surf = pygame.Surface((r * 3, r * 3), pygame.SRCALPHA)
@@ -362,44 +423,132 @@ def draw_tree(surface, cx, cy, r=24):
     pygame.draw.circle(surface, (15, 50, 15), (cx, cy), int(r), width=2)
 
 
-def draw_house(surface):
-    # Main House Wall Structure
-    pygame.draw.rect(surface, COLOR_WALL, (0, 90, 170, 180))
+def draw_house(surface, offset_x=25, offset_y=20):
+    # Wall base
+    pygame.draw.rect(surface, COLOR_WALL, (offset_x, offset_y + 90, 170, 180))
 
-    # Shadow cast under the roof overhang
+    # Roof Shadow
     roof_shadow = pygame.Surface((205, 220), pygame.SRCALPHA)
     roof_shadow_pts = [(0, 75), (195, 75), (195, 168), (105, 168), (105, 288), (0, 288)]
     pygame.draw.polygon(roof_shadow, (0, 0, 0, 65), roof_shadow_pts)
-    surface.blit(roof_shadow, (0, 0))
+    surface.blit(roof_shadow, (offset_x, offset_y))
 
-    # Dark Under-roof Base Layer
-    base_pts = [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)]
+    # Roof Base / Edge
+    base_pts = [
+        (offset_x + 0, offset_y + 70), 
+        (offset_x + 190, offset_y + 70), 
+        (offset_x + 190, offset_y + 160), 
+        (offset_x + 100, offset_y + 160), 
+        (offset_x + 100, offset_y + 280), 
+        (offset_x + 0, offset_y + 280)
+    ]
     pygame.draw.polygon(surface, COLOR_ROOF_EDGE, base_pts)
 
-    # South-facing Main Roof Facet (Lit Side)
-    main_roof_pts = [(0, 70), (185, 70), (185, 155), (95, 155), (95, 275), (0, 275)]
+    # Main Roof Surface
+    main_roof_pts = [
+        (offset_x + 0, offset_y + 70), 
+        (offset_x + 185, offset_y + 70), 
+        (offset_x + 185, offset_y + 155), 
+        (offset_x + 95, offset_y + 155), 
+        (offset_x + 95, offset_y + 275), 
+        (offset_x + 0, offset_y + 275)
+    ]
     pygame.draw.polygon(surface, COLOR_ROOF, main_roof_pts)
 
-    # Tiled Ridge Lines
+    # Top Section Shading Lines
     for y in range(85, 155, 12):
-        pygame.draw.line(surface, COLOR_ROOF_DARK, (0, y), (185, y), 2)
-        pygame.draw.line(surface, COLOR_ROOF_LIGHT, (0, y + 2), (185, y + 2), 1)
+        pygame.draw.line(surface, COLOR_ROOF_DARK, (offset_x, offset_y + y), (offset_x + 185, offset_y + y), 2)
+        pygame.draw.line(surface, COLOR_ROOF_LIGHT, (offset_x, offset_y + y + 2), (offset_x + 185, offset_y + y + 2), 1)
 
+    # Lower Section Shading Lines
     for y in range(165, 275, 12):
-        pygame.draw.line(surface, COLOR_ROOF_DARK, (0, y), (95, y), 2)
-        pygame.draw.line(surface, COLOR_ROOF_LIGHT, (0, y + 2), (95, y + 2), 1)
+        pygame.draw.line(surface, COLOR_ROOF_DARK, (offset_x, offset_y + y), (offset_x + 95, offset_y + y), 2)
+        pygame.draw.line(surface, COLOR_ROOF_LIGHT, (offset_x, offset_y + y + 2), (offset_x + 95, offset_y + y + 2), 1)
 
-    # Sloped Pitch / Shading Bands along top and side edges
-    pygame.draw.polygon(surface, COLOR_ROOF_LIGHT, [(0, 70), (185, 70), (185, 78), (0, 78)])
-    pygame.draw.polygon(surface, COLOR_ROOF_DARK, [(177, 70), (185, 70), (185, 155), (177, 155)])
-    pygame.draw.polygon(surface, COLOR_ROOF_DARK, [(87, 155), (95, 155), (95, 275), (87, 275)])
-
-    # Crisp Perimeter Outline
+    # Roof Highlights & Borders
+    pygame.draw.polygon(surface, COLOR_ROOF_LIGHT, [
+        (offset_x + 0, offset_y + 70), 
+        (offset_x + 185, offset_y + 70), 
+        (offset_x + 185, offset_y + 78), 
+        (offset_x + 0, offset_y + 78)
+    ])
+    pygame.draw.polygon(surface, COLOR_ROOF_DARK, [
+        (offset_x + 177, offset_y + 70), 
+        (offset_x + 185, offset_y + 70), 
+        (offset_x + 185, offset_y + 155), 
+        (offset_x + 177, offset_y + 155)
+    ])
+    pygame.draw.polygon(surface, COLOR_ROOF_DARK, [
+        (offset_x + 87, offset_y + 155), 
+        (offset_x + 95, offset_y + 155), 
+        (offset_x + 95, offset_y + 275), 
+        (offset_x + 87, offset_y + 275)
+    ])
     pygame.draw.polygon(surface, (30, 20, 15), main_roof_pts, width=2)
+
+
+def draw_white_picket_fence(surface, rect, house_rect=None):
+    x, y, w, h = rect
+    post_spacing = 16
+    post_w = 6
+    rail_thick = 3
+
+    # Helper function to check if a point or rect overlaps the house
+    def is_blocked(test_x, test_y, test_w=1, test_h=1):
+        if house_rect is None:
+            return False
+        return house_rect.colliderect(pygame.Rect(test_x, test_y, test_w, test_h))
+
+    # --- Horizontal Rails (Top and Bottom) ---
+    # Top Rail: Skipped where it overlaps the house roof
+    for rx in range(x, x + w):
+        if not is_blocked(rx, y, 1, 6):
+            pygame.draw.line(surface, (200, 200, 200), (rx, y + 6), (rx + 1, y + 6), rail_thick)
+            pygame.draw.line(surface, COLOR_WHITE, (rx, y + 5), (rx + 1, y + 5), rail_thick)
+
+    # Bottom Rail
+    pygame.draw.line(surface, (200, 200, 200), (x, y + h - 6), (x + w, y + h - 6), rail_thick)
+    pygame.draw.line(surface, COLOR_WHITE, (x, y + h - 5), (x + w, y + h - 5), rail_thick)
+
+    # --- Vertical Rails (Left and Right) ---
+    # Left Rail: Skipped where it overlaps the house roof
+    for ry in range(y, y + h):
+        if not is_blocked(x, ry, 6, 1):
+            pygame.draw.line(surface, (200, 200, 200), (x + 6, ry), (x + 6, ry + 1), rail_thick)
+            pygame.draw.line(surface, COLOR_WHITE, (x + 5, ry), (x + 5, ry + 1), rail_thick)
+
+    # Right Rail
+    pygame.draw.line(surface, (200, 200, 200), (x + w - 6, y), (x + w - 6, y + h), rail_thick)
+    pygame.draw.line(surface, COLOR_WHITE, (x + w - 5, y), (x + w - 5, y + h), rail_thick)
+
+    # --- Posts along Top and Bottom ---
+    for px in range(x, x + w + 1, post_spacing):
+        post_x = px - post_w // 2
+        # Top posts (skip if blocked by house)
+        if not is_blocked(post_x, y, post_w, 10):
+            pygame.draw.rect(surface, COLOR_WHITE, (post_x, y, post_w, 10))
+            pygame.draw.rect(surface, (180, 180, 180), (post_x, y, post_w, 10), width=1)
+        
+        # Bottom posts
+        pygame.draw.rect(surface, COLOR_WHITE, (post_x, y + h - 10, post_w, 10))
+        pygame.draw.rect(surface, (180, 180, 180), (post_x, y + h - 10, post_w, 10), width=1)
+
+    # --- Posts along Left and Right ---
+    for py in range(y, y + h + 1, post_spacing):
+        post_y = py - post_w // 2
+        # Left posts (skip if blocked by house)
+        if not is_blocked(x, post_y, 10, post_w):
+            pygame.draw.rect(surface, COLOR_WHITE, (x, post_y, 10, post_w))
+            pygame.draw.rect(surface, (180, 180, 180), (x, post_y, 10, post_w), width=1)
+            
+        # Right posts
+        pygame.draw.rect(surface, COLOR_WHITE, (x + w - 10, post_y, 10, post_w))
+        pygame.draw.rect(surface, (180, 180, 180), (x + w - 10, post_y, 10, post_w), width=1)
 
 
 def draw_map(surface, mud_patches):
     surface.fill(COLOR_BG)
+    draw_grass_tufts(surface)
 
     for p in mud_patches:
         for bx, by, br in p["blobs"]:
@@ -411,10 +560,11 @@ def draw_map(surface, mud_patches):
         for bx, by, br in p["blobs"]:
             pygame.draw.circle(surface, COLOR_MUD_LIGHT, (bx - 2, by - 2), int(br * 0.65))
 
-    # Redesigned House & Roof
+        for bx, by, br in p["blobs"]:
+            pygame.draw.circle(surface, COLOR_MUD_LIGHT, (bx - 2, by - 2), int(br * 0.65))
+
     draw_house(surface)
 
-    # Pool & Bridge
     pygame.draw.rect(surface, COLOR_POOL_RIM, (410, 370, 170, 160), border_radius=8)
     pygame.draw.rect(surface, COLOR_WATER, (425, 385, 140, 130), border_radius=4)
     pygame.draw.rect(surface, (0, 0, 0), (410, 370, 170, 160), width=3, border_radius=8)
@@ -424,27 +574,21 @@ def draw_map(surface, mud_patches):
         pygame.draw.rect(surface, COLOR_BRIDGE, (bridge_x, 395 + (i * 38), 40, 28), border_radius=4)
         pygame.draw.rect(surface, (40, 40, 40), (bridge_x, 395 + (i * 38), 40, 28), width=2, border_radius=4)
 
-    # Lawnmower Yard
-    pygame.draw.rect(surface, COLOR_BG, (30, 390, 180, 180))
-    pygame.draw.rect(surface, COLOR_DARK_GREEN, (30, 390, 180, 180), width=6)
+    draw_white_picket_fence(surface, (10, 10, WIDTH - 20, HEIGHT - 20))
 
-    # Redesigned Trees
     trees = [(230, 130), (420, 140), (500, 220), (280, 580)]
     for tx, ty in trees:
         draw_tree(surface, tx, ty, r=26)
 
-    pygame.draw.rect(surface, COLOR_DARK_GREEN, (0, 0, WIDTH, 25))
-    pygame.draw.rect(surface, COLOR_DARK_GREEN, (0, HEIGHT - 25, WIDTH, 25))
-
 
 def draw_hud(surface, font, p1, p2):
-    p1_bg = pygame.Rect(15, 35, 175, 40)
+    p1_bg = pygame.Rect(20, 20, 175, 40)
     pygame.draw.rect(surface, (20, 20, 20), p1_bg, border_radius=8)
     pygame.draw.rect(surface, COLOR_P1, p1_bg, width=3, border_radius=8)
     p1_txt = font.render(f"P1: {p1.hold_time:04.1f}s / {WIN_TIME:.0f}s", True, COLOR_WHITE)
     surface.blit(p1_txt, (p1_bg.x + 12, p1_bg.y + 8))
 
-    p2_bg = pygame.Rect(WIDTH - 190, 35, 175, 40)
+    p2_bg = pygame.Rect(WIDTH - 195, 20, 175, 40)
     pygame.draw.rect(surface, (20, 20, 20), p2_bg, border_radius=8)
     pygame.draw.rect(surface, COLOR_P2, p2_bg, width=3, border_radius=8)
     p2_txt = font.render(f"P2: {p2.hold_time:04.1f}s / {WIN_TIME:.0f}s", True, COLOR_WHITE)
@@ -457,7 +601,7 @@ def resolve_player_collision(p1, p2):
     distance = math.hypot(dx, dy)
     min_dist = p1.radius + p2.radius
 
-    if distance < min_dist and distance > 0:
+    if 0 < distance < min_dist:
         overlap = min_dist - distance
         nx = dx / distance
         ny = dy / distance
@@ -565,6 +709,18 @@ def main():
     btn_restart = pygame.Rect(WIDTH // 2 - btn_w // 2, 290, btn_w, btn_h)
     btn_home = pygame.Rect(WIDTH // 2 - btn_w // 2, 350, btn_w, btn_h)
 
+    def reset_game():
+        nonlocal game_over, winner_text, steal_cooldown, is_paused
+        p1.reset()
+        p2.reset()
+        crown.reset()
+        boost.active = False
+        boost.respawn_timer = random.uniform(2.0, 5.0)
+        game_over = False
+        winner_text = ""
+        steal_cooldown = 0.0
+        is_paused = False
+
     while True:
         dt = clock.tick(FPS) / 1000.0
         mouse_pos = pygame.mouse.get_pos()
@@ -576,21 +732,23 @@ def main():
 
             if event.type == pygame.KEYDOWN:
                 if game_state == STATE_MENU and event.key == pygame.K_SPACE:
+                    reset_game()
                     game_state = STATE_PLAYING
 
                 elif game_state == STATE_PLAYING and event.key == pygame.K_p and not game_over:
                     is_paused = not is_paused
 
                 elif game_over and event.key == pygame.K_r:
-                    main()
+                    reset_game()
 
             if event.type == pygame.MOUSEBUTTONDOWN and is_paused:
                 if btn_resume.collidepoint(mouse_pos):
                     is_paused = False
                 elif btn_restart.collidepoint(mouse_pos):
-                    main()
+                    reset_game()
                 elif btn_home.collidepoint(mouse_pos):
-                    main()
+                    reset_game()
+                    game_state = STATE_MENU
 
         # --- UPDATE & DRAW ---
 
