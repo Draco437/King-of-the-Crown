@@ -15,7 +15,10 @@ FPS = 60
 
 # Colors
 COLOR_BG = (118, 198, 88)
-COLOR_ROOF = (212, 117, 86)
+COLOR_ROOF = (195, 88, 60)
+COLOR_ROOF_DARK = (145, 55, 35)
+COLOR_ROOF_LIGHT = (225, 115, 85)
+COLOR_ROOF_EDGE = (110, 40, 25)
 COLOR_WALL = (244, 219, 161)
 COLOR_WATER = (91, 160, 226)
 COLOR_POOL_RIM = (230, 210, 190)
@@ -131,21 +134,17 @@ class SpeedBoost:
         self.mud_patches = mud_patches
 
     def is_valid_position(self, px, py):
-        # Margin from boundaries
         if px < 35 or px > WIDTH - 35 or py < 45 or py > HEIGHT - 45:
             return False
 
-        # Avoid House / Roof
         house_rect = pygame.Rect(0, 70, 200, 220)
         if house_rect.collidepoint(px, py):
             return False
 
-        # Avoid Pool & Bridge Region
         pool_rect = pygame.Rect(400, 360, 190, 180)
         if pool_rect.collidepoint(px, py):
             return False
 
-        # Avoid Mud patches
         for p in self.mud_patches:
             if math.hypot(px - p["cx"], py - p["cy"]) < (self.radius + p["r"] + 10):
                 return False
@@ -153,7 +152,7 @@ class SpeedBoost:
         return True
 
     def spawn(self):
-        for _ in range(100):  # Try finding a valid spawn point
+        for _ in range(100):
             tx = random.randint(40, WIDTH - 40)
             ty = random.randint(50, HEIGHT - 50)
             if self.is_valid_position(tx, ty):
@@ -172,16 +171,13 @@ class SpeedBoost:
         if not self.active:
             return
 
-        # Pulsing Glow Effect
         glow_surf = pygame.Surface((self.radius * 4, self.radius * 4), pygame.SRCALPHA)
         pygame.draw.circle(glow_surf, COLOR_BOOST_GLOW, (self.radius * 2, self.radius * 2), self.radius * 2)
         surface.blit(glow_surf, (self.x - self.radius * 2, self.y - self.radius * 2))
 
-        # Main Blue Circle
         pygame.draw.circle(surface, COLOR_BOOST_BLUE, (int(self.x), int(self.y)), self.radius)
         pygame.draw.circle(surface, COLOR_WHITE, (int(self.x), int(self.y)), self.radius, width=2)
 
-        # Thunder Bolt Icon
         thunder_pts = [
             (self.x + 2, self.y - 8),
             (self.x - 5, self.y + 1),
@@ -194,7 +190,7 @@ class SpeedBoost:
 
     def trigger_pickup(self):
         self.active = False
-        self.respawn_timer = random.uniform(5.0, 10.0)  # Timer before next boost spawns
+        self.respawn_timer = random.uniform(5.0, 10.0)
 
 
 class Player:
@@ -243,7 +239,6 @@ class Player:
             if not self.check_obstacle_collision(self.x, target_y, obstacles):
                 self.y = target_y
 
-        # Check Boost Collision
         if boost.active and math.hypot(self.x - boost.x, self.y - boost.y) < (self.radius + boost.radius):
             self.boost_timer = BOOST_DURATION
             boost.trigger_pickup()
@@ -277,7 +272,6 @@ class Player:
         new_rect = rotated_surf.get_rect(center=(int(self.x), int(self.y)))
         surface.blit(rotated_surf, new_rect.topleft)
 
-        # Active Boost Trail/Aura Effect
         if self.boost_timer > 0:
             boost_aura = pygame.Surface((self.radius * 3, self.radius * 3), pygame.SRCALPHA)
             pygame.draw.circle(boost_aura, (0, 180, 255, 80), (int(self.radius * 1.5), int(self.radius * 1.5)), int(self.radius * 1.4))
@@ -333,6 +327,77 @@ def get_static_obstacles():
         pygame.Rect(515, 370, 65, 160)
     ]
 
+def draw_tree(surface, cx, cy, r=24):
+    shadow_surf = pygame.Surface((r * 3, r * 3), pygame.SRCALPHA)
+    pygame.draw.ellipse(shadow_surf, (0, 0, 0, 60), (0, 0, r * 2.4, r * 1.6))
+    surface.blit(shadow_surf, (cx - r * 0.9, cy + r * 0.3))
+
+    pygame.draw.circle(surface, (90, 50, 20), (cx, cy + int(r * 0.3)), int(r * 0.35))
+    pygame.draw.circle(surface, (40, 20, 5), (cx, cy + int(r * 0.3)), int(r * 0.35), width=2)
+
+    layers = [
+        (r * 1.0,  (20, 70, 20)),
+        (r * 0.85, (30, 95, 30)),
+        (r * 0.68, (45, 125, 45)),
+        (r * 0.50, (65, 155, 65)),
+        (r * 0.30, (90, 180, 80))
+    ]
+
+    for radius, color in layers:
+        pygame.draw.circle(surface, color, (cx, cy), int(radius))
+
+    blobs = [
+        (-0.4, -0.3, 0.45, (55, 135, 55)),
+        (0.4, -0.2, 0.4, (55, 135, 55)),
+        (-0.3, 0.4, 0.35, (35, 105, 35)),
+        (0.3, 0.3, 0.38, (35, 105, 35)),
+        (-0.2, -0.5, 0.25, (85, 175, 75))
+    ]
+    for ox, oy, scale, color in blobs:
+        bx = int(cx + ox * r)
+        by = int(cy + oy * r)
+        br = int(r * scale)
+        pygame.draw.circle(surface, color, (bx, by), br)
+
+    pygame.draw.circle(surface, (15, 50, 15), (cx, cy), int(r), width=2)
+
+
+def draw_house(surface):
+    # Main House Wall Structure
+    pygame.draw.rect(surface, COLOR_WALL, (0, 90, 170, 180))
+
+    # Shadow cast under the roof overhang
+    roof_shadow = pygame.Surface((205, 220), pygame.SRCALPHA)
+    roof_shadow_pts = [(0, 75), (195, 75), (195, 168), (105, 168), (105, 288), (0, 288)]
+    pygame.draw.polygon(roof_shadow, (0, 0, 0, 65), roof_shadow_pts)
+    surface.blit(roof_shadow, (0, 0))
+
+    # Dark Under-roof Base Layer
+    base_pts = [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)]
+    pygame.draw.polygon(surface, COLOR_ROOF_EDGE, base_pts)
+
+    # South-facing Main Roof Facet (Lit Side)
+    main_roof_pts = [(0, 70), (185, 70), (185, 155), (95, 155), (95, 275), (0, 275)]
+    pygame.draw.polygon(surface, COLOR_ROOF, main_roof_pts)
+
+    # Tiled Ridge Lines
+    for y in range(85, 155, 12):
+        pygame.draw.line(surface, COLOR_ROOF_DARK, (0, y), (185, y), 2)
+        pygame.draw.line(surface, COLOR_ROOF_LIGHT, (0, y + 2), (185, y + 2), 1)
+
+    for y in range(165, 275, 12):
+        pygame.draw.line(surface, COLOR_ROOF_DARK, (0, y), (95, y), 2)
+        pygame.draw.line(surface, COLOR_ROOF_LIGHT, (0, y + 2), (95, y + 2), 1)
+
+    # Sloped Pitch / Shading Bands along top and side edges
+    pygame.draw.polygon(surface, COLOR_ROOF_LIGHT, [(0, 70), (185, 70), (185, 78), (0, 78)])
+    pygame.draw.polygon(surface, COLOR_ROOF_DARK, [(177, 70), (185, 70), (185, 155), (177, 155)])
+    pygame.draw.polygon(surface, COLOR_ROOF_DARK, [(87, 155), (95, 155), (95, 275), (87, 275)])
+
+    # Crisp Perimeter Outline
+    pygame.draw.polygon(surface, (30, 20, 15), main_roof_pts, width=2)
+
+
 def draw_map(surface, mud_patches):
     surface.fill(COLOR_BG)
 
@@ -346,10 +411,8 @@ def draw_map(surface, mud_patches):
         for bx, by, br in p["blobs"]:
             pygame.draw.circle(surface, COLOR_MUD_LIGHT, (bx - 2, by - 2), int(br * 0.65))
 
-    # House
-    pygame.draw.rect(surface, COLOR_WALL, (0, 90, 170, 180))
-    pygame.draw.polygon(surface, COLOR_ROOF, [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)])
-    pygame.draw.polygon(surface, (0, 0, 0), [(0, 70), (190, 70), (190, 160), (100, 160), (100, 280), (0, 280)], 3)
+    # Redesigned House & Roof
+    draw_house(surface)
 
     # Pool & Bridge
     pygame.draw.rect(surface, COLOR_POOL_RIM, (410, 370, 170, 160), border_radius=8)
@@ -365,11 +428,10 @@ def draw_map(surface, mud_patches):
     pygame.draw.rect(surface, COLOR_BG, (30, 390, 180, 180))
     pygame.draw.rect(surface, COLOR_DARK_GREEN, (30, 390, 180, 180), width=6)
 
-    # Trees
+    # Redesigned Trees
     trees = [(230, 130), (420, 140), (500, 220), (280, 580)]
     for tx, ty in trees:
-        pygame.draw.circle(surface, (45, 130, 45), (tx, ty), 18)
-        pygame.draw.circle(surface, (20, 80, 20), (tx, ty), 18, 2)
+        draw_tree(surface, tx, ty, r=26)
 
     pygame.draw.rect(surface, COLOR_DARK_GREEN, (0, 0, WIDTH, 25))
     pygame.draw.rect(surface, COLOR_DARK_GREEN, (0, HEIGHT - 25, WIDTH, 25))
