@@ -7,7 +7,7 @@ import random
 # --- INITIALIZATION & CONSTANTS ---
 pygame.init()
 
-WIDTH, HEIGHT = 630, 620
+WIDTH, HEIGHT = 610, 620
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("King of the Crown")
 clock = pygame.time.Clock()
