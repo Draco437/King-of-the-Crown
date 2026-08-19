@@ -648,7 +648,7 @@ def draw_welcome_screen(surface, font_title, font_sub, font_bold, start_bg=None)
     p2_ctrl = font_sub.render("Controls:  ARROW KEYS", True, COLOR_WHITE)
 
     rules_head = font_bold.render("HOW TO PLAY", True, COLOR_CROWN)
-    rule_1 = font_sub.render("• Grab the crown & hold it for 15 seconds!", True, COLOR_WHITE)
+    rule_1 = font_sub.render("• Grab the crown & hold it for 20 seconds!", True, COLOR_WHITE)
     rule_2 = font_sub.render("• Bump into the crown holder to steal it.", True, COLOR_WHITE)
     rule_3 = font_sub.render("• Grab blue thunder boost for extra speed!", True, COLOR_WHITE)
     pause_info = font_sub.render("• Press 'P' at any time to Pause the game.", True, (200, 200, 200))
